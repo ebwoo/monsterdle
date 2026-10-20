@@ -302,3 +302,8 @@ button:disabled { opacity: .5; cursor: default; }
   background: var(--panel);
   color: var(--text);
 }
+.streak-now { color: var(--accent); }
+.table.history td { vertical-align: top; }
+.squares { white-space: nowrap; letter-spacing: 1px; font-size: .8rem; }
+.table.history .puzzle { white-space: nowrap; font-size: .85rem; }
+.table.history .sub { color: var(--muted); font-size: .75rem; }

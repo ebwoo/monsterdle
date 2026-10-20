@@ -3,7 +3,7 @@
 import { changePassword, currentUser, login, logout, register } from "./auth.js";
 import { HttpError, ensureSchema, json, prune, readJson } from "./db.js";
 import { claimRounds, clip, loadConfig, makeGuess, roundView, startRound, summary } from "./rounds.js";
-import { leaderboard, profile } from "./stats.js";
+import { history, leaderboard, profile } from "./stats.js";
 
 async function route(request, env, ctx, url) {
   const method = request.method;
@@ -47,6 +47,9 @@ async function route(request, env, ctx, url) {
   }
   if (method === "GET" && (m = path.match(/^\/api\/clip\/([\w-]+)$/))) return clip(env, config, request, m[1]);
   if (method === "GET" && (m = path.match(/^\/api\/profile\/([\w]+)$/))) return json(await profile(env, config, user, m[1]));
+  if (method === "GET" && (m = path.match(/^\/api\/profile\/([\w]+)\/history$/))) {
+    return json(await history(env, config, user, m[1], url.searchParams));
+  }
   if (method === "GET" && path === "/api/leaderboard") return json(await leaderboard(env, config));
   throw new HttpError(404, "Not found.");
 }

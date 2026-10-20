@@ -56,12 +56,6 @@ function render(p) {
   document.title = `${p.username} · Monsterdle`;
   const o = p.overall;
   const joined = new Date(p.memberSince).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-  const recentRows = p.recent.map((r) => `
-    <tr>
-      <td>${escapeHtml(r.mode)} ${r.playType === "daily" ? `#${r.puzzleNumber}` : "<span class='muted'>endless</span>"}</td>
-      <td>${r.answer ? escapeHtml(r.answer) : '<span class="muted">Hidden until tomorrow</span>'}</td>
-      <td class="num ${r.won ? "win-text" : "loss-text"}">${r.won ? `${r.guesses} guess${r.guesses === 1 ? "" : "es"}` : "Missed"}</td>
-    </tr>`).join("");
 
   $("profile").innerHTML = `
     <h2 class="page-title" style="margin-bottom:2px">${escapeHtml(p.username)}</h2>
@@ -77,6 +71,13 @@ function render(p) {
         <p id="pw-error" class="form-error" role="alert"></p>
         <button type="submit">Save new password</button>
       </form>` : ""}
+
+    <h3 class="section-title">Best streaks</h3>
+    <div class="stat-grid">
+      ${p.modes.map((m) => `
+        ${stat(m.daily.best, `${escapeHtml(m.label)} · daily${m.daily.current ? ` <span class="streak-now">(${m.daily.current} now)</span>` : ""}`)}
+        ${stat(m.endless.best, `${escapeHtml(m.label)} · endless${m.endless.current ? ` <span class="streak-now">(${m.endless.current} now)</span>` : ""}`)}`).join("")}
+    </div>
 
     <h3 class="section-title">Overview</h3>
     <div class="stat-grid">
@@ -109,12 +110,27 @@ function render(p) {
           `Guessed ${escapeHtml(x.guess)} when it was ${escapeHtml(x.answer)} <span class="muted">×${x.count}</span>`)}</li>
     </ul>
 
-    <h3 class="section-title">Recent games</h3>
-    ${p.recent.length ? `
-      <div class="card" style="padding:4px 8px">
-        <table class="table"><tbody>${recentRows}</tbody></table>
-      </div>` : '<p class="empty">No games yet.</p>'}
+    <h3 class="section-title">Game history</h3>
+    <nav class="tabs" id="history-tabs" aria-label="Filter games" style="margin-bottom:10px">
+      <button data-mode="" class="active">All</button>
+      ${p.modes.map((m) => `<button data-mode="${escapeHtml(m.key)}">${escapeHtml(m.label)}</button>`).join("")}
+    </nav>
+    <div class="card" style="padding:4px 8px">
+      <table class="table history">
+        <thead><tr><th>Puzzle</th><th>Monster</th><th class="num">Result</th></tr></thead>
+        <tbody id="history-rows"></tbody>
+      </table>
+      <p id="history-empty" class="empty" hidden>No games yet.</p>
+    </div>
+    <button id="history-more" class="secondary" style="margin-top:10px;width:100%" hidden>Show older games</button>
   `;
+
+  document.querySelectorAll("#history-tabs button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("#history-tabs button").forEach((x) => x.classList.toggle("active", x === b));
+    loadHistory(b.dataset.mode, true);
+  }));
+  $("history-more").addEventListener("click", () => loadHistory(historyMode, false));
+  loadHistory("", true);
 
   if (p.isOwner) {
     $("logout").addEventListener("click", async () => {
@@ -137,6 +153,50 @@ function render(p) {
         $("pw-error").textContent = err.message;
       }
     });
+  }
+}
+
+// ---------- game history ----------
+
+const SQUARES = { wrong: "🟥", skip: "⬛", right: "🟩" };
+let historyMode = "";
+let historyNext = null;
+let historyRequest = 0;
+
+function historyRow(g) {
+  const date = new Date(g.finishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const kind = g.playType === "daily" ? `Daily #${g.puzzleNumber}` : "Endless";
+  return `
+    <tr>
+      <td class="puzzle">${escapeHtml(g.mode)}<div class="sub">${kind} · ${date}</div></td>
+      <td>${g.answer ? escapeHtml(g.answer) : '<span class="muted">Hidden until tomorrow</span>'}
+        <div class="squares" aria-label="${g.attempts} guesses">${g.squares.map((t) => SQUARES[t]).join("")}</div></td>
+      <td class="num ${g.won ? "win-text" : "loss-text"}">${g.won ? `${g.attempts} ${g.attempts === 1 ? "try" : "tries"}` : "Missed"}</td>
+    </tr>`;
+}
+
+// Loads a page of past games. `fresh` starts the list over (e.g. after picking a different mode).
+async function loadHistory(mode, fresh) {
+  const request = ++historyRequest;
+  historyMode = mode;
+  if (fresh) historyNext = null;
+  const query = new URLSearchParams();
+  if (mode) query.set("mode", mode);
+  if (historyNext) query.set("before", historyNext);
+  $("history-more").disabled = true;
+  try {
+    const page = await api(`/api/profile/${encodeURIComponent(username)}/history?${query}`);
+    if (request !== historyRequest) return;
+    const html = page.games.map(historyRow).join("");
+    if (fresh) $("history-rows").innerHTML = html;
+    else $("history-rows").insertAdjacentHTML("beforeend", html);
+    historyNext = page.next;
+    $("history-more").hidden = !page.next;
+    $("history-empty").hidden = $("history-rows").children.length > 0;
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    $("history-more").disabled = false;
   }
 }
 

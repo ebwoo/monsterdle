@@ -6,23 +6,22 @@ let mode = storage.get("md-board-mode", null);
 
 function boardCard(board) {
   const me = auth.user?.username.toLowerCase();
-  const isStreak = board.kind !== "wins";
   const rows = board.rows.map((r) => `
     <tr class="${r.username.toLowerCase() === me ? "me" : ""}">
       <td class="rank rank-${r.rank}">${r.rank}</td>
       <td><a href="/profile.html?u=${encodeURIComponent(r.username)}">${escapeHtml(r.username)}</a></td>
       <td class="num">${r.value}</td>
-      ${isStreak ? `<td class="num muted">${r.current}</td>` : ""}
     </tr>`).join("");
+  const empty = board.metric === "current" ? "No active streaks right now." : "No one yet. This could be you!";
   return `
     <section class="card">
       <h3>${escapeHtml(board.title)}</h3>
       <div class="muted" style="text-align:left">${escapeHtml(board.modeLabel)}</div>
       ${board.rows.length ? `
         <table class="table">
-          <thead><tr><th>#</th><th>Player</th><th class="num">${isStreak ? "Best" : "Wins"}</th>${isStreak ? '<th class="num">Now</th>' : ""}</tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th class="num">${board.kind === "wins" ? "Wins" : "Streak"}</th></tr></thead>
           <tbody>${rows}</tbody>
-        </table>` : '<p class="empty">No one yet. This could be you!</p>'}
+        </table>` : `<p class="empty">${empty}</p>`}
     </section>`;
 }
 

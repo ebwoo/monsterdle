@@ -1,6 +1,6 @@
 // Profile pages and leaderboards.
 import { HttpError, all, first } from "./db.js";
-import { puzzleNumber, todayKey } from "./daily.js";
+import { previousDay, puzzleNumber, todayKey } from "./daily.js";
 import { liveStreak } from "./rounds.js";
 
 const blank = (steps) => ({
@@ -79,16 +79,6 @@ export async function profile(env, config, viewer, username) {
     return { current: liveStreak(kind, row), best: row?.best || 0 };
   };
 
-  const recent = rounds.slice(-10).reverse().map((r) => ({
-    mode: config.modes[r.mode]?.label || r.mode,
-    playType: r.play_type,
-    puzzleNumber: r.day ? puzzleNumber(r.day) : null,
-    won: !!r.won,
-    guesses: JSON.parse(r.guesses).length,
-    answer: r.play_type === "daily" && r.day === today && !isOwner ? null : r.answer,
-    finishedAt: r.finished_at,
-  }));
-
   return {
     username: user.username,
     memberSince: user.created_at,
@@ -108,8 +98,51 @@ export async function profile(env, config, viewer, username) {
         return { answer, guess, count };
       }),
     },
-    recent,
   };
+}
+
+// A player's past games, newest first, a page at a time. `before` is the cursor
+// from the previous page ("finishedAt:id"), so pages never skip or repeat a game.
+export async function history(env, config, viewer, username, params) {
+  const user = await first(env, "SELECT id FROM users WHERE username_lower = ?", String(username).toLowerCase());
+  if (!user) throw new HttpError(404, "No player with that name.");
+  const isOwner = viewer?.id === user.id;
+  const today = todayKey();
+  const limit = 25;
+
+  const where = ["user_id = ?", "done = 1"];
+  const args = [user.id];
+  const mode = params.get("mode");
+  if (mode && config.modes[mode]) {
+    where.push("mode = ?");
+    args.push(mode);
+  }
+  const before = (params.get("before") || "").match(/^(\d+):([\w-]+)$/);
+  if (before) {
+    where.push("(finished_at < ? OR (finished_at = ? AND id < ?))");
+    args.push(Number(before[1]), Number(before[1]), before[2]);
+  }
+  const rows = await all(env,
+    `SELECT id, mode, play_type, day, answer, guesses, won, finished_at FROM rounds
+     WHERE ${where.join(" AND ")} ORDER BY finished_at DESC, id DESC LIMIT ?`,
+    ...args, limit + 1);
+
+  const games = rows.slice(0, limit).map((r) => {
+    const guesses = JSON.parse(r.guesses);
+    return {
+      mode: config.modes[r.mode]?.label || r.mode,
+      playType: r.play_type,
+      puzzleNumber: r.day ? puzzleNumber(r.day) : null,
+      won: !!r.won,
+      attempts: guesses.length,
+      squares: guesses.map((g) => g.type),
+      // Today's daily answer stays hidden from other players until tomorrow.
+      answer: r.play_type === "daily" && r.day === today && !isOwner ? null : r.answer,
+      finishedAt: r.finished_at,
+    };
+  });
+  const last = rows[limit - 1];
+  return { games, next: rows.length > limit ? `${last.finished_at}:${last.id}` : null };
 }
 
 // Players with the same score share a rank.
@@ -118,27 +151,34 @@ function ranked(rows) {
 }
 
 export async function leaderboard(env, config) {
+  const today = todayKey();
   const boards = [];
   for (const [key, m] of Object.entries(config.modes)) {
     for (const kind of ["daily", "endless"]) {
-      const rows = await all(env,
-        `SELECT u.username, s.best, s.current, s.last_day FROM streaks s JOIN users u ON u.id = s.user_id
+      const label = kind === "daily" ? "Daily" : "Endless";
+      // Current streaks: a daily streak only counts if its last win was today or yesterday.
+      const current = await all(env,
+        `SELECT u.username, s.current AS value FROM streaks s JOIN users u ON u.id = s.user_id
+         WHERE s.mode = ? AND s.kind = ? AND s.current > 0
+           ${kind === "daily" ? "AND s.last_day IN (?, ?)" : ""}
+         ORDER BY s.current DESC, s.best DESC, u.username_lower LIMIT 25`,
+        ...(kind === "daily" ? [key, kind, today, previousDay(today)] : [key, kind]));
+      const best = await all(env,
+        `SELECT u.username, s.best AS value FROM streaks s JOIN users u ON u.id = s.user_id
          WHERE s.mode = ? AND s.kind = ? AND s.best > 0
-         ORDER BY s.best DESC, s.current DESC, u.username_lower LIMIT 25`,
+         ORDER BY s.best DESC, u.username_lower LIMIT 25`,
         key, kind);
-      boards.push({
-        id: `${key}-${kind}`,
-        mode: key,
-        modeLabel: m.label,
-        kind,
-        title: `Best ${kind} streak`,
-        rows: ranked(rows.map((r) => ({ username: r.username, value: r.best, current: liveStreak(kind, r) }))),
-      });
+      boards.push(
+        { id: `${key}-${kind}-current`, mode: key, modeLabel: m.label, kind, metric: "current",
+          title: `${label}: current streak`, rows: ranked(current) },
+        { id: `${key}-${kind}-best`, mode: key, modeLabel: m.label, kind, metric: "best",
+          title: `${label}: best streak ever`, rows: ranked(best) },
+      );
     }
   }
   const wins = await all(env,
     `SELECT u.username, COUNT(*) AS value FROM rounds r JOIN users u ON u.id = r.user_id
      WHERE r.won = 1 GROUP BY r.user_id ORDER BY value DESC, u.username_lower LIMIT 25`);
-  boards.push({ id: "wins", mode: null, modeLabel: "All modes", kind: "wins", title: "Most monsters identified", rows: ranked(wins) });
+  boards.push({ id: "wins", mode: null, modeLabel: "All modes", kind: "wins", metric: "wins", title: "Most monsters identified", rows: ranked(wins) });
   return { modes: Object.entries(config.modes).map(([key, m]) => ({ key, label: m.label })), boards };
 }
