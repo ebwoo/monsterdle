@@ -35,6 +35,7 @@ function stopAudio() {
   }
   cancelAnimationFrame(playheadFrame);
   $("play").textContent = "▶";
+  $("play").classList.remove("playing");
   if (game) showPosition(seekPos);
 }
 
@@ -138,6 +139,7 @@ async function play() {
   source.start(0, round.offset + from, length);
   currentSource = source;
   $("play").textContent = "■";
+  $("play").classList.add("playing");
 
   // The audio clock only moves in small jumps, so the animation follows the screen's
   // frame clock instead (minus the speaker delay, so it lines up with what you hear).
