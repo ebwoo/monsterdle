@@ -182,3 +182,43 @@ export async function leaderboard(env, config) {
   boards.push({ id: "wins", mode: null, modeLabel: "All modes", kind: "wins", metric: "wins", title: "Most monsters identified", rows: ranked(wins) });
   return { modes: Object.entries(config.modes).map(([key, m]) => ({ key, label: m.label })), boards };
 }
+
+// The run of endless rounds behind a player's best streak in one mode: the longest
+// unbroken string of wins, in the order they were played. On a tie, the run that set
+// the record first wins (the same rule as the best-streak number). Daily isn't included.
+export async function bestRun(env, config, username, mode) {
+  if (!config.modes[mode]) throw new HttpError(400, "Unknown mode.");
+  const user = await first(env, "SELECT id FROM users WHERE username_lower = ?", String(username).toLowerCase());
+  if (!user) throw new HttpError(404, "No player with that name.");
+  const rounds = await all(env,
+    `SELECT answer, guesses, won, created_at, finished_at FROM rounds
+     WHERE user_id = ? AND mode = ? AND play_type = 'endless' AND done = 1
+     ORDER BY finished_at, id`,
+    user.id, mode);
+
+  let bestStart = 0, bestLength = 0, start = 0;
+  rounds.forEach((r, i) => {
+    if (!r.won) {
+      start = i + 1;
+      return;
+    }
+    if (i - start + 1 > bestLength) {
+      bestStart = start;
+      bestLength = i - start + 1;
+    }
+  });
+  const run = rounds.slice(bestStart, bestStart + bestLength);
+  // Still going if nothing has been finished in this mode since the run's last win.
+  const ongoing = bestLength > 0 && bestStart + bestLength === rounds.length;
+  return {
+    mode: config.modes[mode].label,
+    length: bestLength,
+    ongoing,
+    rounds: run.map((r) => ({
+      answer: r.answer,
+      guesses: JSON.parse(r.guesses),
+      timeMs: r.finished_at - r.created_at,
+      finishedAt: r.finished_at,
+    })),
+  };
+}

@@ -307,3 +307,33 @@ button:disabled { opacity: .5; cursor: default; }
 .squares { white-space: nowrap; letter-spacing: 1px; font-size: .8rem; }
 .table.history .puzzle { white-space: nowrap; font-size: .85rem; }
 .table.history .sub { color: var(--muted); font-size: .75rem; }
+
+/* ---------- best endless run ---------- */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: .85rem;
+}
+.link-button:hover { text-decoration: underline; }
+#best-run { margin-top: 12px; }
+.run-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.run-head h3 { margin: 0; font-size: 1rem; }
+.run-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 480px; overflow-y: auto; }
+.run-list li {
+  display: grid;
+  grid-template-columns: 2em 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.run-num { color: var(--muted); font-variant-numeric: tabular-nums; }
+.run-guesses { margin-top: 4px; font-size: .8rem; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.chip { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: var(--muted); }
+.run-side { text-align: right; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }

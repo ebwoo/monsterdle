@@ -76,8 +76,13 @@ function render(p) {
     <div class="stat-grid">
       ${p.modes.map((m) => `
         ${stat(m.daily.best, `${escapeHtml(m.label)} · daily${m.daily.current ? ` <span class="streak-now">(${m.daily.current} now)</span>` : ""}`)}
-        ${stat(m.endless.best, `${escapeHtml(m.label)} · endless${m.endless.current ? ` <span class="streak-now">(${m.endless.current} now)</span>` : ""}`)}`).join("")}
+        <div class="stat">
+          <div class="value">${m.endless.best}</div>
+          <div class="label">${escapeHtml(m.label)} · endless${m.endless.current ? ` <span class="streak-now">(${m.endless.current} now)</span>` : ""}</div>
+          ${m.endless.best ? `<button class="link-button" data-run="${escapeHtml(m.key)}">View run ›</button>` : ""}
+        </div>`).join("")}
     </div>
+    <div id="best-run" hidden></div>
 
     <h3 class="section-title">Overview</h3>
     <div class="stat-grid">
@@ -125,6 +130,7 @@ function render(p) {
     <button id="history-more" class="secondary" style="margin-top:10px;width:100%" hidden>Show older games</button>
   `;
 
+  document.querySelectorAll("[data-run]").forEach((b) => b.addEventListener("click", () => toggleBestRun(b.dataset.run)));
   document.querySelectorAll("#history-tabs button").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("#history-tabs button").forEach((x) => x.classList.toggle("active", x === b));
     loadHistory(b.dataset.mode, true);
@@ -153,6 +159,63 @@ function render(p) {
         $("pw-error").textContent = err.message;
       }
     });
+  }
+}
+
+// ---------- best endless run ----------
+
+let openRun = null;
+
+function guessChips(guesses) {
+  return guesses.map((g) => g.type === "right" ? "🟩"
+    : g.type === "skip" ? `<span class="chip">⬛ skipped</span>`
+    : `<span class="chip">🟥 ${escapeHtml(g.name)}</span>`).join(" ");
+}
+
+// Shows (or hides, if it's already open) every round of the player's best endless run in a mode.
+async function toggleBestRun(mode) {
+  const panel = $("best-run");
+  if (openRun === mode) {
+    openRun = null;
+    panel.hidden = true;
+    return;
+  }
+  openRun = mode;
+  panel.hidden = false;
+  panel.innerHTML = '<p class="empty">Loading…</p>';
+  try {
+    const run = await api(`/api/profile/${encodeURIComponent(username)}/best-run/${encodeURIComponent(mode)}`);
+    if (openRun !== mode) return;
+    const day = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const first = run.rounds[0], last = run.rounds[run.rounds.length - 1];
+    const span = first && day(first.finishedAt) !== day(last.finishedAt)
+      ? `${day(first.finishedAt)} – ${day(last.finishedAt)}` : first ? day(first.finishedAt) : "";
+    panel.innerHTML = `
+      <section class="card run">
+        <div class="run-head">
+          <h3>${escapeHtml(run.mode)} · best endless run</h3>
+          <button class="link-button" id="close-run">Close</button>
+        </div>
+        <p class="muted" style="text-align:left;margin:2px 0 10px">
+          ${run.length} in a row${span ? ` · ${span}` : ""}${run.ongoing ? ' · <span class="streak-now">still going</span>' : ""}
+        </p>
+        <ol class="run-list">
+          ${run.rounds.map((r, i) => `
+            <li>
+              <span class="run-num">${i + 1}</span>
+              <div class="run-main">
+                <strong>${escapeHtml(r.answer)}</strong>
+                <div class="run-guesses">${guessChips(r.guesses)}</div>
+              </div>
+              <div class="run-side">${r.guesses.length} ${r.guesses.length === 1 ? "try" : "tries"}<br>
+                <span class="muted">${formatTime(r.timeMs)}</span></div>
+            </li>`).join("")}
+        </ol>
+      </section>`;
+    $("close-run").addEventListener("click", () => toggleBestRun(mode));
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (err) {
+    panel.innerHTML = `<p class="empty">${escapeHtml(err.message)}</p>`;
   }
 }
 
