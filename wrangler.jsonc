@@ -15,7 +15,7 @@
       "binding": "DB",
       "database_name": "monsterdle",
       // Paste your database's ID here (see TESTING.md). Local testing works without it.
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "efe3a400-d25f-477e-a3f8-a9b800ba4a63"
     }
   ]
 }
