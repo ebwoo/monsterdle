@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile · Monsterdle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <h1><a href="/">Monsterdle</a></h1>
+      <nav class="site-nav" id="site-nav" aria-label="Site"></nav>
+    </div>
+  </header>
+
+  <main class="wide">
+    <form id="lookup" class="actions-row" style="margin-bottom:8px">
+      <input id="lookup-name" class="search-input" placeholder="Look up a player…" maxlength="20" aria-label="Player name">
+      <button class="secondary" type="submit">View</button>
+    </form>
+    <div id="profile"><p class="empty">Loading…</p></div>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="profile.js"></script>
+</body>
+</html>

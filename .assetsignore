@@ -2,3 +2,11 @@
 .github
 .gitignore
 .assetsignore
+.wrangler
+node_modules
+worker
+wrangler.jsonc
+package.json
+package-lock.json
+README.md
+TESTING.md

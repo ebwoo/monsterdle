@@ -1,0 +1,21 @@
+// Cloudflare settings for Monsterdle.
+{
+  // Must match your Worker's name in the Cloudflare dashboard exactly.
+  "name": "monsterdle",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    // These addresses go to the server code first instead of straight to the files.
+    "run_worker_first": ["/api/*", "/audio/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "monsterdle",
+      // Paste your database's ID here (see TESTING.md). Local testing works without it.
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

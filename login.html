@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in · Monsterdle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <h1><a href="/">Monsterdle</a></h1>
+      <nav class="site-nav" id="site-nav" aria-label="Site"></nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="center-tabs toggle" role="tablist">
+      <button id="tab-login" class="active" role="tab">Log in</button>
+      <button id="tab-register" role="tab">Create account</button>
+    </div>
+
+    <form id="form" class="form card" novalidate>
+      <label>Username
+        <input id="username" name="username" autocomplete="username" maxlength="20" required>
+      </label>
+      <label>Password
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <label id="confirm-row" hidden>Confirm password
+        <input id="confirm" type="password" autocomplete="new-password">
+      </label>
+      <p id="rules" class="muted" style="text-align:left;margin:0" hidden>
+        Usernames are 3–20 characters (letters, numbers and _) and must be unique.
+        Passwords need at least 8 characters. There's no email, so there's no way to
+        reset a forgotten password: pick one you'll remember.
+      </p>
+      <p id="error" class="form-error" role="alert"></p>
+      <button id="submit" type="submit">Log in</button>
+    </form>
+  </main>
+
+  <script type="module" src="login.js"></script>
+</body>
+</html>

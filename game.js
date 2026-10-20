@@ -1,116 +1,9 @@
-"use strict";
-
-// ---------- helpers ----------
-
-const $ = (id) => document.getElementById(id);
-
-function hashString(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-// Small seeded PRNG so every player gets the same daily puzzle.
-function mulberry32(seed) {
-  return function () {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function seededShuffle(list, seed) {
-  const rng = mulberry32(seed);
-  const out = list.slice();
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
-// "audio/Pale_Crawler.mp3" -> "Pale Crawler"
-const nameFromFile = (path) =>
-  path.split("/").pop().replace(/\.[^.]+$/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+// The game page. The server picks the monster and checks guesses (see worker/rounds.js);
+// this file handles playing the clip, typing guesses and showing results.
+import { normalizeConfig, startStyle } from "./lib/config.js";
+import { $, api, auth, guestRoundKey, storage, toast } from "./common.js";
 
 const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-// Everyone gets the new daily monster at midnight in this time zone, wherever they are.
-// Use any name from https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-const RESET_TIME_ZONE = "America/New_York";
-
-// Today's date in the reset time zone, as "YYYY-MM-DD".
-function todayKey(now = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: RESET_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(now);
-  const get = (type) => parts.find((p) => p.type === type).value;
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
-// Milliseconds until the next daily reset. Searches for the moment the date
-// changes, so days made longer or shorter by daylight saving still work.
-function msUntilReset() {
-  const now = Date.now();
-  const today = todayKey(new Date(now));
-  let lo = now, hi = now + 26 * 3600000;
-  while (hi - lo > 1000) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (todayKey(new Date(mid)) === today) lo = mid; else hi = mid;
-  }
-  return hi - now;
-}
-
-// The day your game launched (year-month-day). That day is puzzle #1.
-const LAUNCH_DATE = "2026-10-19";
-
-// Whole days from one "YYYY-MM-DD" date to another.
-function daysBetween(from, to) {
-  const utc = (key) => {
-    const [y, m, d] = key.split("-").map(Number);
-    return Date.UTC(y, m - 1, d);
-  };
-  return Math.round((utc(to) - utc(from)) / 86400000);
-}
-
-// Picks the daily monster. Counted from a fixed date so the order never shifts.
-function dayNumber(day = todayKey()) {
-  return daysBetween("2026-01-01", day);
-}
-
-// The number shown when sharing: #1 on launch day, #2 the day after, and so on.
-function puzzleNumber(day = todayKey()) {
-  return daysBetween(LAUNCH_DATE, day) + 1;
-}
-
-const storage = {
-  get(key, fallback) {
-    try {
-      const v = localStorage.getItem(key);
-      return v ? JSON.parse(v) : fallback;
-    } catch {
-      return fallback;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {}
-  },
-};
-
-function toast(msg) {
-  const el = $("toast");
-  el.textContent = msg;
-  el.hidden = false;
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (el.hidden = true), 1800);
-}
 
 // ---------- audio ----------
 
@@ -122,11 +15,9 @@ let playheadFrame = null;
 async function loadBuffer(url) {
   if (!bufferCache.has(url)) {
     audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-    // Encode each path segment so names with spaces, apostrophes or # still load.
-    const safeUrl = url.split("/").map(encodeURIComponent).join("/");
-    const promise = fetch(safeUrl)
+    const promise = fetch(url)
       .then((r) => {
-        if (!r.ok) throw new Error(`Could not load ${url}`);
+        if (!r.ok) throw new Error("Couldn't load the clip. Try refreshing.");
         return r.arrayBuffer();
       })
       .then((data) => audioCtx.decodeAudioData(data));
@@ -143,8 +34,8 @@ function stopAudio() {
     currentSource = null;
   }
   cancelAnimationFrame(playheadFrame);
-  $("playhead").style.width = "0";
   $("play").textContent = "▶";
+  if (game) showPosition(seekPos);
 }
 
 // ---------- game state ----------
@@ -152,89 +43,66 @@ function stopAudio() {
 let config;
 let mode;                // a key from config.modes, e.g. "easy"
 let playType = "daily";  // "daily" | "endless"
-let game;                // { answer, guesses: [{type, name}], done, won, offset }
+let game = null;         // the current round from the server, plus `offset` (where the clip starts in the file)
+let userStats = null;    // logged-in players' stats for this mode, from the server
+let seekPos = 0;         // where in the unlocked clip playback starts, in seconds
+let dragging = false;
+let busy = false;
+let startCounter = 0;
 
-const MAX_GUESSES = () => config.modes[mode].steps.length;
+const steps = () => config.modes[mode].steps;
+const MAX_GUESSES = () => steps().length;
+const maxLen = () => steps()[steps().length - 1];
 
-function pool() {
-  return config.monsters.filter((m) => m.audio);
+function unlockedLength() {
+  if (game.done) return maxLen();
+  return steps()[Math.min(game.guesses.length, steps().length - 1)];
 }
 
-function stateKey(day) {
-  return `md-daily-${mode}-${day}`;
-}
+// The latest point playback can start from, leaving a little to hear.
+const maxStart = () => Math.max(0, unlockedLength() - 0.25);
 
-// "beginning" plays from 0:00; "random" plays from anywhere in the file.
-// Modes without a "start" setting: the first one plays from the beginning, the rest are random.
-function startStyle(key) {
-  const start = config.modes[key].start;
-  if (start === "beginning" || start === "random") return start;
-  return Object.keys(config.modes)[0] === key ? "beginning" : "random";
-}
-
-// Every mode walks the same shuffled list, each one spread evenly behind the last,
-// so different modes' daily puzzles are never the same monster.
-function pickDailyAnswer(day) {
-  const list = seededShuffle(pool(), hashString("order"));
-  const keys = Object.keys(config.modes);
-  const shift = Math.floor(list.length * keys.indexOf(mode) / keys.length);
-  const i = dayNumber(day) + shift;
-  return list[((i % list.length) + list.length) % list.length];
-}
-
-function pickRandomAnswer(exclude) {
-  const list = pool();
-  const choices = list.length > 1 ? list.filter((m) => m.name !== exclude) : list;
-  return choices[Math.floor(Math.random() * choices.length)];
-}
-
-function startGame() {
+async function startGame() {
+  const request = ++startCounter;
   stopAudio();
-  const day = todayKey();
-  if (playType === "daily") {
-    const answer = pickDailyAnswer(day);
-    const saved = storage.get(stateKey(day), null);
-    game = saved && saved.answer === answer.name
-      ? { ...saved, answer, day }
-      : { answer, guesses: [], done: false, won: false, day };
-  } else {
-    game = { answer: pickRandomAnswer(game?.answer?.name), guesses: [], done: false, won: false, day };
-  }
-  game.offset = null;
+  game = null;
+  seekPos = 0;
   render();
-  // Start fetching right away so the first play is instant.
-  prepareClip().catch((e) => toast(e.message));
+  try {
+    const roundId = auth.user ? undefined : storage.get(guestRoundKey(playType, mode), undefined);
+    const data = await api("/api/round/start", { method: "POST", body: { mode, playType, roundId } });
+    if (request !== startCounter) return; // the player switched modes while this was loading
+    if (!auth.user) storage.set(guestRoundKey(playType, mode), data.round.id);
+    applyRound(data);
+    render();
+    // Start fetching right away so the first play is instant.
+    prepareClip().catch((e) => toast(e.message));
+  } catch (e) {
+    if (request !== startCounter) return;
+    $("clip-len").textContent = e.message;
+  }
 }
 
-function saveGame() {
-  if (playType !== "daily") return;
-  const { answer, guesses, done, won } = game;
-  storage.set(stateKey(game.day), { answer: answer.name, guesses, done, won });
+function applyRound(data) {
+  const same = game && game.id === data.round.id;
+  game = {
+    ...data.round,
+    offset: same ? game.offset : null,
+    // Keep the reset time from when the round began, so a daily finished after midnight still counts as yesterday's.
+    nextResetAt: same ? game.nextResetAt : data.round.nextResetAt,
+  };
+  userStats = data.stats;
 }
 
 // Works out where in the file this round's clip starts.
 async function prepareClip() {
-  const buffer = await loadBuffer(game.answer.audio);
-  if (game.offset === null) {
-    if (startStyle(mode) === "beginning") {
-      game.offset = 0;
-    } else {
-      const steps = config.modes[mode].steps;
-      const maxLen = steps[steps.length - 1];
-      const room = Math.max(0, buffer.duration - maxLen);
-      const rng = playType === "daily"
-        ? mulberry32(hashString(`offset-${mode}-${game.day}`))
-        : Math.random;
-      game.offset = rng() * room;
-    }
+  const round = game;
+  const buffer = await loadBuffer(`/api/clip/${round.id}`);
+  if (round.offset === null) {
+    const room = Math.max(0, buffer.duration - maxLen());
+    round.offset = startStyle(config, round.mode) === "beginning" ? 0 : round.seed * room;
   }
   return buffer;
-}
-
-function unlockedLength() {
-  const steps = config.modes[mode].steps;
-  if (game.done) return steps[steps.length - 1];
-  return steps[Math.min(game.guesses.length, steps.length - 1)];
 }
 
 async function togglePlay() {
@@ -242,7 +110,12 @@ async function togglePlay() {
     stopAudio();
     return;
   }
-  const answerAtStart = game.answer;
+  await play();
+}
+
+async function play() {
+  if (!game) return;
+  const round = game;
   let buffer;
   try {
     buffer = await prepareClip();
@@ -250,29 +123,59 @@ async function togglePlay() {
     toast(e.message);
     return;
   }
-  if (game.answer !== answerAtStart) return;
+  if (game !== round) return;
   await audioCtx.resume();
+  stopAudio();
 
-  const steps = config.modes[mode].steps;
-  const maxLen = steps[steps.length - 1];
-  const length = Math.min(unlockedLength(), buffer.duration - game.offset);
+  const from = Math.min(seekPos, maxStart());
+  const length = Math.min(unlockedLength() - from, buffer.duration - round.offset - from);
+  if (length <= 0) return;
 
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
   source.connect(audioCtx.destination);
   source.onended = stopAudio;
-  source.start(0, game.offset, length);
+  source.start(0, round.offset + from, length);
   currentSource = source;
   $("play").textContent = "■";
 
   const startedAt = audioCtx.currentTime;
   const tick = () => {
-    const elapsed = audioCtx.currentTime - startedAt;
-    $("playhead").style.width = `${Math.min(elapsed, length) / maxLen * 100}%`;
+    const pos = from + Math.min(audioCtx.currentTime - startedAt, length);
+    if (!dragging) showPosition(pos);
     if (currentSource === source) playheadFrame = requestAnimationFrame(tick);
   };
   tick();
 }
+
+// Moves the slider, the green fill and the time label to a position (seconds).
+function showPosition(pos) {
+  $("seek").value = pos;
+  $("playhead").style.width = `${pos / maxLen() * 100}%`;
+  $("pos-label").textContent = `${pos.toFixed(1)}s`;
+}
+
+// The slider can only go as far as the part of the clip that's been unlocked.
+function setSeekFromSlider() {
+  seekPos = Math.min(Math.max(0, Number($("seek").value)), maxStart());
+  showPosition(seekPos);
+}
+
+function onSeekInput() {
+  if (!game) return;
+  dragging = true;
+  setSeekFromSlider();
+}
+
+function onSeekChange() {
+  if (!game) return;
+  dragging = false;
+  setSeekFromSlider();
+  // Letting go while the clip plays jumps playback to the new spot.
+  if (currentSource) play();
+}
+
+// ---------- guessing ----------
 
 // Number of typos between two strings (insert, delete, change, or swap two neighbouring letters).
 function editDistance(a, b) {
@@ -312,8 +215,8 @@ function findMonster(text) {
   return best;
 }
 
-function submitGuess(text) {
-  if (game.done) return;
+async function submitGuess(text) {
+  if (!game || game.done || busy) return;
   const typed = text.trim();
   if (!typed) {
     toast("Type a guess first");
@@ -329,48 +232,64 @@ function submitGuess(text) {
     toast("Already guessed");
     return;
   }
-  const correct = monster.name === game.answer.name;
-  game.guesses.push({ type: correct ? "right" : "wrong", name: monster.name });
-  $("guess").value = "";
-  hideSuggestions();
-  afterTurn(correct);
+  if (await sendTurn({ guess: monster.name })) {
+    $("guess").value = "";
+    hideSuggestions();
+  }
 }
 
 function skip() {
-  if (game.done) return;
-  game.guesses.push({ type: "skip", name: "Skipped" });
-  afterTurn(false);
+  if (!game || game.done || busy) return;
+  sendTurn({ skip: true });
 }
 
-function afterTurn(correct) {
-  stopAudio();
-  if (correct || game.guesses.length >= MAX_GUESSES()) {
-    game.done = true;
-    game.won = correct;
-    recordStats();
+async function sendTurn(body) {
+  busy = true;
+  $("submit").disabled = $("skip").disabled = true;
+  try {
+    const data = await api(`/api/round/${game.id}/guess`, { method: "POST", body });
+    stopAudio();
+    const finished = data.round.done && !game.done;
+    applyRound(data);
+    if (finished && !auth.user) recordGuestStats();
+    render();
+    return true;
+  } catch (e) {
+    toast(e.message);
+    return false;
+  } finally {
+    busy = false;
+    $("submit").disabled = $("skip").disabled = false;
   }
-  saveGame();
-  render();
 }
 
 // ---------- stats & sharing ----------
 
-function statsKey() {
-  return `md-stats-${mode}-${playType}`;
-}
+// Guests' stats live in this browser only. Logged-in players' stats come from the server.
+const guestStatsKey = () => `md-stats-${mode}-${playType}`;
 
-function recordStats() {
-  const s = storage.get(statsKey(), { played: 0, wins: 0, streak: 0, best: 0, dist: {} });
+function recordGuestStats() {
+  const s = storage.get(guestStatsKey(), { played: 0, wins: 0, streak: 0, best: 0 });
   s.played++;
   if (game.won) {
     s.wins++;
     s.streak++;
     s.best = Math.max(s.best, s.streak);
-    s.dist[game.guesses.length] = (s.dist[game.guesses.length] || 0) + 1;
   } else {
     s.streak = 0;
   }
-  storage.set(statsKey(), s);
+  storage.set(guestStatsKey(), s);
+}
+
+function statsLine() {
+  if (auth.user && userStats) {
+    const s = userStats;
+    const pct = s.played ? Math.round(s.wins / s.played * 100) : 0;
+    return `Played ${s.played} · Win ${pct}% · Streak ${s.current} · Best ${s.best}`;
+  }
+  const s = storage.get(guestStatsKey(), { played: 0, wins: 0, streak: 0, best: 0 });
+  const pct = s.played ? Math.round(s.wins / s.played * 100) : 0;
+  return `Played ${s.played} · Win ${pct}% · Streak ${s.streak} · Best ${s.best}`;
 }
 
 function shareText() {
@@ -380,8 +299,11 @@ function shareText() {
   const score = game.won ? game.guesses.length : "X";
   const label = config.modes[mode].label;
   const header = playType === "daily"
-    ? `${config.title} ${label} #${puzzleNumber(game.day)}`
+    ? `${config.title} ${label} #${game.puzzleNumber}`
     : `${config.title} ${label} (Endless)`;
+  // Each guess is wrapped in || || so Discord hides it as a spoiler until clicked.
+  const guessLines = game.guesses.map((g, i) =>
+    `${i + 1}. ${icons[g.type]} ${g.type === "skip" ? "Skipped" : `||${g.name}||`}`);
   // Blank lines between sections keep it readable when pasted into chats.
   return [
     header,
@@ -389,14 +311,16 @@ function shareText() {
     "",
     `🔊 ${squares}`,
     "",
-    location.origin + location.pathname,
+    ...guessLines,
+    "",
+    location.origin + "/",
   ].join("\n");
 }
 
 async function share() {
   try {
     await navigator.clipboard.writeText(shareText());
-    toast("Copied to clipboard");
+    toast("Copied! Guesses show as spoilers on Discord.");
   } catch {
     prompt("Copy your result:", shareText());
   }
@@ -420,7 +344,7 @@ function chooseSuggestion(name) {
 function showSuggestions() {
   const n = normalize($("guess").value);
   const list = $("suggestions");
-  if (!n) return hideSuggestions();
+  if (!n || !game) return hideSuggestions();
   const guessed = new Set(game.guesses.map((g) => g.name));
   const matches = config.monsters
     .filter((m) => !guessed.has(m.name))
@@ -461,8 +385,7 @@ function onGuessKey(e) {
 
 function render() {
   const modeCfg = config.modes[mode];
-  const steps = modeCfg.steps;
-  const maxLen = steps[steps.length - 1];
+  const total = maxLen();
 
   document.querySelectorAll("#mode-tabs button").forEach((b) =>
     b.classList.toggle("active", b.dataset.mode === mode));
@@ -472,9 +395,9 @@ function render() {
 
   // Guess rows
   const rows = [];
-  for (let i = 0; i < steps.length; i++) {
+  for (let i = 0; i < steps().length; i++) {
     const li = document.createElement("li");
-    const g = game.guesses[i];
+    const g = game?.guesses[i];
     if (g) {
       li.className = g.type;
       li.append(g.name);
@@ -486,21 +409,36 @@ function render() {
   // Timeline
   const timeline = $("timeline");
   timeline.querySelectorAll(".tick").forEach((t) => t.remove());
-  for (const s of steps.slice(0, -1)) {
+  for (const s of steps().slice(0, -1)) {
     const tick = document.createElement("div");
     tick.className = "tick";
-    tick.style.left = `${s / maxLen * 100}%`;
+    tick.style.left = `${s / total * 100}%`;
     timeline.append(tick);
   }
-  $("unlocked").style.width = `${unlockedLength() / maxLen * 100}%`;
-  $("max-label").textContent = `${maxLen}s`;
+  $("max-label").textContent = `${total}s`;
+  $("seek").max = total;
+
+  const loading = !game;
+  $("play").disabled = $("seek").disabled = loading;
+  if (loading) {
+    $("unlocked").style.width = "0";
+    $("playhead").style.width = "0";
+    $("pos-label").textContent = "0.0s";
+    $("clip-len").textContent = "Loading…";
+    $("input-area").hidden = true;
+    $("result").hidden = true;
+    $("countdown").hidden = true;
+    return;
+  }
 
   const len = unlockedLength();
-  $("clip-len").textContent = game.done
-    ? "Full clip unlocked"
-    : `Clip length: ${len}s`;
+  $("unlocked").style.width = `${len / total * 100}%`;
+  seekPos = Math.min(seekPos, maxStart());
+  if (!currentSource) showPosition(seekPos);
+  $("clip-len").textContent = (game.done ? "Full clip unlocked" : `Clip length: ${len}s`) +
+    (len > steps()[0] ? " · drag the slider to replay any part" : "");
 
-  const nextStep = steps[game.guesses.length + 1];
+  const nextStep = steps()[game.guesses.length + 1];
   $("skip").textContent = nextStep ? `Skip (+${+(nextStep - len).toFixed(2)}s)` : "Give up";
 
   // Input vs. result
@@ -510,11 +448,10 @@ function render() {
     $("result-title").textContent = game.won
       ? `Got it in ${game.guesses.length}!`
       : "Out of guesses";
-    $("result-answer").textContent = `It was ${game.answer.name}.`;
+    $("result-answer").textContent = `It was ${game.answer}.`;
     $("next").hidden = playType !== "endless";
-    const s = storage.get(statsKey(), { played: 0, wins: 0, streak: 0, best: 0 });
-    const pct = s.played ? Math.round(s.wins / s.played * 100) : 0;
-    $("stats").textContent = `Played ${s.played} · Win ${pct}% · Streak ${s.streak} · Best ${s.best}`;
+    $("stats").textContent = statsLine();
+    $("account-hint").hidden = !!auth.user;
   }
   updateCountdown();
 }
@@ -527,27 +464,30 @@ function formatDuration(ms) {
   return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
 }
 
-let lastSeenDay = null;
+let lastTick = Date.now();
 
 // Runs every second: updates the countdown, and moves to the new puzzle at reset.
 function updateCountdown() {
-  const today = todayKey();
+  const now = Date.now();
+  const previous = lastTick;
+  lastTick = now;
+  if (!game) return;
+  const daily = playType === "daily";
   const el = $("countdown");
-  const show = playType === "daily" && game.done;
+  const show = daily && game.done;
+  const stale = daily && now >= game.nextResetAt;
   el.hidden = !show;
-  const stale = game.day !== today;
   el.classList.toggle("ready", stale);
   if (show) {
     el.textContent = stale
       ? "A new monster is ready! Click here to play."
-      : `Next monster in ${formatDuration(msUntilReset())}`;
+      : `Next monster in ${formatDuration(game.nextResetAt - now)}`;
   }
 
   // At the moment of reset, switch over unless the player is partway through a puzzle.
   // (They finish that one first; afterwards the message above offers the new one.)
-  const justReset = lastSeenDay !== null && lastSeenDay !== today;
-  lastSeenDay = today;
-  if (justReset && playType === "daily" && stale && (game.done || game.guesses.length === 0)) {
+  const justReset = daily && previous < game.nextResetAt && now >= game.nextResetAt;
+  if (justReset && (game.done || game.guesses.length === 0)) {
     startGame();
     if (show) toast("A new monster is ready!");
   }
@@ -557,41 +497,15 @@ function updateCountdown() {
 
 async function init() {
   try {
-    config = await fetch("monsters.json").then((r) => r.json());
+    config = normalizeConfig(await fetch("monsters.json").then((r) => r.json()));
   } catch {
-    document.querySelector("main").textContent =
-      "Could not load monsters.json. Run the site from a web server (see README).";
+    document.querySelector("main").textContent = "Could not load monsters.json.";
     return;
   }
-
-  // Entries can be a bare file path or an object; a missing name comes from the file name.
-  // Older lists used "spawn"/"theme" instead of "audio", so those still work.
-  config.monsters = (config.monsters || []).flatMap((m) => {
-    const entry = typeof m === "string" ? { audio: m } : { ...m };
-    entry.audio ||= entry.spawn || entry.theme;
-    if (!entry.audio) {
-      console.warn("Skipping monster with no audio file:", m);
-      return [];
-    }
-    return [{ ...entry, name: entry.name || nameFromFile(entry.audio), aliases: entry.aliases || [] }];
-  });
   if (!config.monsters.length) {
     document.querySelector("main").textContent =
       "monsters.json has no monsters with an audio file. Rebuild it with tools/make-monster-list.html.";
     return;
-  }
-  config.title ||= "Monsterdle";
-  // Drop any mode that's missing its clip lengths, and fall back to defaults if none are left.
-  config.modes = Object.fromEntries(Object.entries(config.modes || {}).filter(([key, m]) => {
-    const ok = m && Array.isArray(m.steps) && m.steps.length > 0;
-    if (!ok) console.warn(`Mode "${key}" has no "steps" list, so it was skipped.`);
-    return ok;
-  }));
-  if (!Object.keys(config.modes).length) {
-    config.modes = {
-      spawn: { label: "Spawn Sound", description: "", start: "beginning", steps: [0.5, 1, 2, 3, 5, 8] },
-      theme: { label: "Theme", description: "", start: "random", steps: [1, 2, 4, 7, 11, 16] },
-    };
   }
 
   document.title = config.title;
@@ -600,7 +514,7 @@ async function init() {
   const tabs = Object.entries(config.modes)
     .map(([key, m]) => {
       const b = document.createElement("button");
-      b.textContent = m.label || key;
+      b.textContent = m.label;
       b.dataset.mode = key;
       b.addEventListener("click", () => {
         mode = key;
@@ -624,11 +538,15 @@ async function init() {
     }));
 
   $("play").addEventListener("click", togglePlay);
+  $("seek").addEventListener("input", onSeekInput);
+  $("seek").addEventListener("change", onSeekChange);
   $("submit").addEventListener("click", () => submitGuess($("guess").value));
   $("skip").addEventListener("click", skip);
   $("share").addEventListener("click", share);
   $("next").addEventListener("click", startGame);
-  $("countdown").addEventListener("click", () => { if (game.day !== todayKey()) startGame(); });
+  $("countdown").addEventListener("click", () => {
+    if (game && Date.now() >= game.nextResetAt) startGame();
+  });
   $("guess").addEventListener("input", () => { activeSuggestion = -1; showSuggestions(); });
   $("guess").addEventListener("keydown", onGuessKey);
   $("guess").addEventListener("blur", hideSuggestions);
