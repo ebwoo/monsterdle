@@ -526,14 +526,24 @@ button.secondary { background: #000; color: var(--text); border: 2px solid var(-
 .page-title, .section-title { text-shadow: 0 0 8px #000, 0 1px 2px #000; }
 .chip { background: #111; }
 
-/* Small text on the game page sits on a faint dark backing so it stays readable over the bright wallpaper. */
-#mode-desc, #clip-len, #stats, #account-hint, #result-answer, .countdown:not([hidden]) {
+/* Text boxes styled like the ones in the game: a red double frame around black,
+   with red italic text. */
+#mode-desc, #clip-len, #stats, #account-hint, #result-answer, .wide > p.muted {
   display: table;
   margin-left: auto;
   margin-right: auto;
-  padding: 4px 10px;
-  background: rgba(0, 0, 0, .62);
-  border-radius: 2px;
+  padding: 10px 16px;
+  text-align: center;
+  font-style: italic;
+  font-size: 1.02rem;
+  line-height: 1.3;
+  color: #ff2020;
+  text-shadow: 1px 1px 0 #000, 0 0 3px #000;
+  background: linear-gradient(90deg, rgba(48, 48, 48, .94), rgba(0, 0, 0, .96) 28%, rgba(0, 0, 0, .96) 72%, rgba(48, 48, 48, .94));
+  border: 3px solid #ff1f24;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 4px #050505, inset 0 0 0 6px #ff1f24, 0 3px 10px rgba(0, 0, 0, .6);
 }
 #mode-desc:empty { display: none; }
-.wide > p.muted { padding: 6px 10px; background: rgba(0, 0, 0, .62); border-radius: 2px; }
+.wide > p.muted { display: block; }
+#account-hint a { color: #ff9a9e; }
