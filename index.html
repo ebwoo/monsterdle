@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monsterdle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1 id="title">Monsterdle</h1>
+    <nav class="tabs" id="mode-tabs" aria-label="Mode"></nav>
+    <div class="toggle" role="group" aria-label="Play type">
+      <button data-play="daily" class="active">Daily</button>
+      <button data-play="endless">Endless</button>
+    </div>
+  </header>
+
+  <main>
+    <p id="mode-desc" class="muted"></p>
+
+    <ol id="guesses" class="guesses"></ol>
+
+    <section class="player">
+      <div class="timeline" id="timeline">
+        <div class="unlocked" id="unlocked"></div>
+        <div class="playhead" id="playhead"></div>
+      </div>
+      <div class="timeline-labels">
+        <span>0s</span><span id="max-label"></span>
+      </div>
+      <button id="play" class="play" aria-label="Play clip">▶</button>
+      <p id="clip-len" class="muted"></p>
+    </section>
+
+    <section id="input-area" class="input-area">
+      <div class="search">
+        <input id="guess" type="text" placeholder="Type your guess…" autocomplete="off" spellcheck="false">
+        <ul id="suggestions" class="suggestions" hidden></ul>
+      </div>
+      <div class="actions">
+        <button id="skip" class="secondary">Skip (+time)</button>
+        <button id="submit">Guess</button>
+      </div>
+    </section>
+
+    <section id="result" class="result" hidden>
+      <h2 id="result-title"></h2>
+      <p id="result-answer"></p>
+      <div class="actions">
+        <button id="share">Copy result</button>
+        <button id="next" class="secondary" hidden>Next monster</button>
+      </div>
+      <p id="stats" class="muted"></p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="game.js"></script>
+</body>
+</html>

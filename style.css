@@ -1,0 +1,145 @@
+:root {
+  --bg: #121214;
+  --panel: #1d1d22;
+  --border: #33333b;
+  --text: #ececf1;
+  --muted: #9a9aa6;
+  --accent: #b6f23a;
+  --wrong: #e5484d;
+  --skip: #55555f;
+  --right: #46a758;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 { margin: 0; font-size: 1.4rem; letter-spacing: .04em; }
+
+main { max-width: 520px; margin: 0 auto; padding: 16px; }
+
+.muted { color: var(--muted); font-size: .9rem; text-align: center; }
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #111;
+  font-weight: 600;
+}
+button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+
+.tabs, .toggle { display: flex; gap: 4px; }
+.tabs button, .toggle button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  font-weight: 500;
+}
+.tabs button.active, .toggle button.active { color: var(--text); border-color: var(--accent); }
+
+.guesses { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 6px; }
+.guesses li {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.guesses li.wrong { border-color: var(--wrong); }
+.guesses li.wrong::before { content: "✕"; color: var(--wrong); }
+.guesses li.skip { color: var(--muted); }
+.guesses li.skip::before { content: "⏭"; }
+.guesses li.right { border-color: var(--right); background: color-mix(in srgb, var(--right) 18%, transparent); }
+.guesses li.right::before { content: "✓"; color: var(--right); }
+
+.player { text-align: center; margin: 24px 0; }
+
+.timeline {
+  position: relative;
+  height: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.timeline .unlocked { position: absolute; inset: 0 auto 0 0; background: #3a3a44; transition: width .3s; }
+.timeline .playhead { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 0; }
+.timeline .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--bg); }
+.timeline-labels { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: 4px; }
+
+.play {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  margin-top: 12px;
+}
+
+.input-area { display: grid; gap: 10px; }
+.search { position: relative; }
+.search input {
+  width: 100%;
+  font: inherit;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.suggestions {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0; right: 0;
+  margin: 0; padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 10;
+}
+.suggestions li { padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.suggestions li.active, .suggestions li:hover { background: #2c2c34; }
+
+.actions { display: flex; justify-content: space-between; gap: 10px; }
+.actions button { flex: 1; }
+
+.result { text-align: center; margin-top: 16px; }
+.result h2 { margin: 0 0 4px; }
+
+.toast {
+  position: fixed;
+  top: 16px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+}
