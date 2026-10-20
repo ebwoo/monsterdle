@@ -46,8 +46,9 @@ export const auth = {
 };
 
 export async function api(path, { method = "GET", body } = {}) {
+  const sentToken = auth.token;
   const headers = {};
-  if (auth.token) headers.authorization = `Bearer ${auth.token}`;
+  if (sentToken) headers.authorization = `Bearer ${sentToken}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   let res;
   try {
@@ -56,14 +57,19 @@ export async function api(path, { method = "GET", body } = {}) {
     throw new Error("Couldn't reach the server. Check your connection.");
   }
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && auth.token && path !== "/api/login") {
-    // The saved login expired or was signed out elsewhere.
+  if (res.status === 401 && sentToken && path !== "/api/login") {
+    // The saved login expired or the account no longer exists: log out and carry on as a guest.
     auth.clear();
     renderNav();
+    toast("You've been logged out. Log in again to keep saving your stats.");
+    if (!["/api/me", "/api/password", "/api/claim"].includes(path)) return api(path, { method, body });
   }
   if (!res.ok) throw new Error(data.error || `Something went wrong (${res.status}).`);
   return data;
 }
+
+// Checks a saved login is still good when a page opens, so the name in the corner is never stale.
+if (auth.token) api("/api/me").catch(() => {});
 
 // Guests' rounds are remembered by id in this browser, one per mode and play type.
 export const guestRoundKey = (playType, mode) => `md-round-${playType}-${mode}`;

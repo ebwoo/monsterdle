@@ -82,7 +82,7 @@ export async function login(env, body) {
   return createSession(env, user);
 }
 
-const tokenFrom = (request) => (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || null;
+export const tokenFrom = (request) => (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || null;
 
 export async function logout(env, request) {
   const token = tokenFrom(request);

@@ -1,6 +1,6 @@
 // The server side of Monsterdle: everything under /api/. All other addresses are
 // the normal website files, served straight from the repository.
-import { changePassword, currentUser, login, logout, register } from "./auth.js";
+import { changePassword, currentUser, login, logout, register, tokenFrom } from "./auth.js";
 import { HttpError, ensureSchema, json, prune, readJson } from "./db.js";
 import { claimRounds, clip, loadConfig, makeGuess, roundView, startRound, summary } from "./rounds.js";
 import { history, leaderboard, profile } from "./stats.js";
@@ -10,6 +10,12 @@ async function route(request, env, ctx, url) {
   const path = url.pathname;
   const config = await loadConfig(env, request);
   const user = await currentUser(env, request);
+  // A login the server doesn't recognise (expired, or the account is gone): say so,
+  // so the page can log out instead of silently playing as a guest while showing a name.
+  const accountRoutes = ["/api/login", "/api/register", "/api/logout"];
+  if (!user && tokenFrom(request) && !accountRoutes.includes(path)) {
+    throw new HttpError(401, "Your login has expired. Please log in again.");
+  }
   let m;
 
   // Each finished round reply also carries the player's stats for that mode.
