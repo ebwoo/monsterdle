@@ -132,6 +132,8 @@ button:disabled { opacity: .5; cursor: default; }
 
 .result { text-align: center; margin-top: 16px; }
 .result h2 { margin: 0 0 4px; }
+.countdown { font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 12px; }
+.countdown.ready { color: var(--accent); cursor: pointer; text-decoration: underline; }
 
 .toast {
   position: fixed;

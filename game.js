@@ -40,15 +40,52 @@ const nameFromFile = (path) =>
 
 const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-function todayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Everyone gets the new daily monster at midnight in this time zone, wherever they are.
+// Use any name from https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+const RESET_TIME_ZONE = "America/New_York";
+
+// Today's date in the reset time zone, as "YYYY-MM-DD".
+function todayKey(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: RESET_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const get = (type) => parts.find((p) => p.type === type).value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-// Puzzle number: days since launch, in the player's local time.
-function dayNumber() {
-  const [y, m, d] = todayKey().split("-").map(Number);
-  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(2026, 0, 1)) / 86400000);
+// Milliseconds until the next daily reset. Searches for the moment the date
+// changes, so days made longer or shorter by daylight saving still work.
+function msUntilReset() {
+  const now = Date.now();
+  const today = todayKey(new Date(now));
+  let lo = now, hi = now + 26 * 3600000;
+  while (hi - lo > 1000) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (todayKey(new Date(mid)) === today) lo = mid; else hi = mid;
+  }
+  return hi - now;
+}
+
+// The day your game launched (year-month-day). That day is puzzle #1.
+const LAUNCH_DATE = "2026-10-19";
+
+// Whole days from one "YYYY-MM-DD" date to another.
+function daysBetween(from, to) {
+  const utc = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(to) - utc(from)) / 86400000);
+}
+
+// Picks the daily monster. Counted from a fixed date so the order never shifts.
+function dayNumber(day = todayKey()) {
+  return daysBetween("2026-01-01", day);
+}
+
+// The number shown when sharing: #1 on launch day, #2 the day after, and so on.
+function puzzleNumber(day = todayKey()) {
+  return daysBetween(LAUNCH_DATE, day) + 1;
 }
 
 const storage = {
@@ -123,8 +160,8 @@ function pool() {
   return config.monsters.filter((m) => m.audio);
 }
 
-function stateKey() {
-  return `md-daily-${mode}-${todayKey()}`;
+function stateKey(day) {
+  return `md-daily-${mode}-${day}`;
 }
 
 // "beginning" plays from 0:00; "random" plays from anywhere in the file.
@@ -137,11 +174,11 @@ function startStyle(key) {
 
 // Every mode walks the same shuffled list, each one spread evenly behind the last,
 // so different modes' daily puzzles are never the same monster.
-function pickDailyAnswer() {
+function pickDailyAnswer(day) {
   const list = seededShuffle(pool(), hashString("order"));
   const keys = Object.keys(config.modes);
   const shift = Math.floor(list.length * keys.indexOf(mode) / keys.length);
-  const i = dayNumber() + shift;
+  const i = dayNumber(day) + shift;
   return list[((i % list.length) + list.length) % list.length];
 }
 
@@ -153,14 +190,15 @@ function pickRandomAnswer(exclude) {
 
 function startGame() {
   stopAudio();
+  const day = todayKey();
   if (playType === "daily") {
-    const answer = pickDailyAnswer();
-    const saved = storage.get(stateKey(), null);
+    const answer = pickDailyAnswer(day);
+    const saved = storage.get(stateKey(day), null);
     game = saved && saved.answer === answer.name
-      ? { ...saved, answer }
-      : { answer, guesses: [], done: false, won: false };
+      ? { ...saved, answer, day }
+      : { answer, guesses: [], done: false, won: false, day };
   } else {
-    game = { answer: pickRandomAnswer(game?.answer?.name), guesses: [], done: false, won: false };
+    game = { answer: pickRandomAnswer(game?.answer?.name), guesses: [], done: false, won: false, day };
   }
   game.offset = null;
   render();
@@ -171,7 +209,7 @@ function startGame() {
 function saveGame() {
   if (playType !== "daily") return;
   const { answer, guesses, done, won } = game;
-  storage.set(stateKey(), { answer: answer.name, guesses, done, won });
+  storage.set(stateKey(game.day), { answer: answer.name, guesses, done, won });
 }
 
 // Works out where in the file this round's clip starts.
@@ -185,7 +223,7 @@ async function prepareClip() {
       const maxLen = steps[steps.length - 1];
       const room = Math.max(0, buffer.duration - maxLen);
       const rng = playType === "daily"
-        ? mulberry32(hashString(`offset-${mode}-${todayKey()}`))
+        ? mulberry32(hashString(`offset-${mode}-${game.day}`))
         : Math.random;
       game.offset = rng() * room;
     }
@@ -342,9 +380,17 @@ function shareText() {
   const score = game.won ? game.guesses.length : "X";
   const label = config.modes[mode].label;
   const header = playType === "daily"
-    ? `${config.title} ${label} #${dayNumber() + 1}`
+    ? `${config.title} ${label} #${puzzleNumber(game.day)}`
     : `${config.title} ${label} (Endless)`;
-  return `${header} ${score}/${MAX_GUESSES()}\n🔊${squares}\n${location.href}`;
+  // Blank lines between sections keep it readable when pasted into chats.
+  return [
+    header,
+    `Score: ${score}/${MAX_GUESSES()}`,
+    "",
+    `🔊 ${squares}`,
+    "",
+    location.origin + location.pathname,
+  ].join("\n");
 }
 
 async function share() {
@@ -470,6 +516,41 @@ function render() {
     const pct = s.played ? Math.round(s.wins / s.played * 100) : 0;
     $("stats").textContent = `Played ${s.played} · Win ${pct}% · Streak ${s.streak} · Best ${s.best}`;
   }
+  updateCountdown();
+}
+
+function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
+let lastSeenDay = null;
+
+// Runs every second: updates the countdown, and moves to the new puzzle at reset.
+function updateCountdown() {
+  const today = todayKey();
+  const el = $("countdown");
+  const show = playType === "daily" && game.done;
+  el.hidden = !show;
+  const stale = game.day !== today;
+  el.classList.toggle("ready", stale);
+  if (show) {
+    el.textContent = stale
+      ? "A new monster is ready! Click here to play."
+      : `Next monster in ${formatDuration(msUntilReset())}`;
+  }
+
+  // At the moment of reset, switch over unless the player is partway through a puzzle.
+  // (They finish that one first; afterwards the message above offers the new one.)
+  const justReset = lastSeenDay !== null && lastSeenDay !== today;
+  lastSeenDay = today;
+  if (justReset && playType === "daily" && stale && (game.done || game.guesses.length === 0)) {
+    startGame();
+    if (show) toast("A new monster is ready!");
+  }
 }
 
 // ---------- setup ----------
@@ -547,11 +628,13 @@ async function init() {
   $("skip").addEventListener("click", skip);
   $("share").addEventListener("click", share);
   $("next").addEventListener("click", startGame);
+  $("countdown").addEventListener("click", () => { if (game.day !== todayKey()) startGame(); });
   $("guess").addEventListener("input", () => { activeSuggestion = -1; showSuggestions(); });
   $("guess").addEventListener("keydown", onGuessKey);
   $("guess").addEventListener("blur", hideSuggestions);
 
   startGame();
+  setInterval(updateCountdown, 1000);
 }
 
 init();
