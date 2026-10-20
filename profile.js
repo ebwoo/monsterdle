@@ -187,7 +187,7 @@ async function toggleBestRun(mode) {
     const run = await api(`/api/profile/${encodeURIComponent(username)}/best-run/${encodeURIComponent(mode)}`);
     if (openRun !== mode) return;
     const day = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const first = run.rounds[0], last = run.rounds[run.rounds.length - 1];
+    const first = run.rounds[0], last = run.endedBy || run.rounds[run.rounds.length - 1];
     const span = first && day(first.finishedAt) !== day(last.finishedAt)
       ? `${day(first.finishedAt)} – ${day(last.finishedAt)}` : first ? day(first.finishedAt) : "";
     panel.innerHTML = `
@@ -210,6 +210,17 @@ async function toggleBestRun(mode) {
               <div class="run-side">${r.guesses.length} ${r.guesses.length === 1 ? "try" : "tries"}<br>
                 <span class="muted">${formatTime(r.timeMs)}</span></div>
             </li>`).join("")}
+          ${run.endedBy ? `
+            <li class="run-ended">
+              <span class="run-num">✕</span>
+              <div class="run-main">
+                <span class="fact-label">Run ended by</span>
+                <strong>${escapeHtml(run.endedBy.answer)}</strong>
+                <div class="run-guesses">${guessChips(run.endedBy.guesses)}</div>
+              </div>
+              <div class="run-side"><span class="loss-text">Missed</span><br>
+                <span class="muted">${formatTime(run.endedBy.timeMs)}</span></div>
+            </li>` : ""}
         </ol>
       </section>`;
     $("close-run").addEventListener("click", () => toggleBestRun(mode));

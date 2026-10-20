@@ -208,17 +208,19 @@ export async function bestRun(env, config, username, mode) {
     }
   });
   const run = rounds.slice(bestStart, bestStart + bestLength);
-  // Still going if nothing has been finished in this mode since the run's last win.
-  const ongoing = bestLength > 0 && bestStart + bestLength === rounds.length;
+  // The miss right after the run is what ended it. If there isn't one, the run is still going.
+  const ender = bestLength > 0 ? rounds[bestStart + bestLength] : null;
+  const details = (r) => ({
+    answer: r.answer,
+    guesses: JSON.parse(r.guesses),
+    timeMs: r.finished_at - r.created_at,
+    finishedAt: r.finished_at,
+  });
   return {
     mode: config.modes[mode].label,
     length: bestLength,
-    ongoing,
-    rounds: run.map((r) => ({
-      answer: r.answer,
-      guesses: JSON.parse(r.guesses),
-      timeMs: r.finished_at - r.created_at,
-      finishedAt: r.finished_at,
-    })),
+    ongoing: bestLength > 0 && !ender,
+    rounds: run.map(details),
+    endedBy: ender ? details(ender) : null,
   };
 }
