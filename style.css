@@ -96,38 +96,44 @@ button:disabled { opacity: .5; cursor: default; }
 
 .player { text-align: center; margin: 24px 0; }
 
-.scrubber { position: relative; height: 22px; display: flex; align-items: center; }
+/* --pos (0 to 1) is set by game.js; the green fill and the handle both follow it,
+   so they always move together. */
+.scrubber { --pos: 0; position: relative; height: 22px; display: flex; align-items: center; }
 .scrubber .timeline { flex: 1; }
 
-/* The slider sits on top of the timeline: only its round handle is visible. */
+/* The handle is drawn by us rather than the browser so it lines up exactly with the fill. */
+.handle {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--pos) * 100%);
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 3px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  pointer-events: none;
+  will-change: left;
+}
+
+/* The real slider sits on top, invisible, so dragging and keyboard control still work. */
 .seek {
   position: absolute;
   inset: 0;
   width: 100%;
   margin: 0;
-  background: transparent;
+  opacity: 0;
   -webkit-appearance: none;
   appearance: none;
   cursor: pointer;
 }
 .seek:disabled { cursor: default; }
-.seek::-webkit-slider-runnable-track { background: transparent; height: 22px; }
-.seek::-moz-range-track { background: transparent; height: 22px; }
-.seek::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px; height: 18px; margin-top: 2px;
-  border-radius: 50%;
-  background: var(--text);
-  border: 3px solid var(--accent);
-  box-shadow: 0 1px 4px rgba(0,0,0,.5);
-}
-.seek::-moz-range-thumb {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--text);
-  border: 3px solid var(--accent);
-}
-.seek:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+.seek:disabled ~ .handle { opacity: .4; }
+/* A very thin invisible thumb makes clicks land exactly where the pointer is. */
+.seek::-webkit-slider-runnable-track { height: 22px; }
+.seek::-webkit-slider-thumb { -webkit-appearance: none; width: 2px; height: 22px; }
+.seek::-moz-range-thumb { width: 2px; height: 22px; border: 0; }
+.seek:focus-visible ~ .handle { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .timeline {
   position: relative;
@@ -138,7 +144,14 @@ button:disabled { opacity: .5; cursor: default; }
   overflow: hidden;
 }
 .timeline .unlocked { position: absolute; inset: 0 auto 0 0; background: #3a3a44; transition: width .3s; }
-.timeline .playhead { position: absolute; inset: 0 auto 0 0; background: var(--accent); width: 0; }
+.timeline .playhead {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(var(--pos));
+  will-change: transform;
+}
 .timeline .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--bg); }
 .timeline-labels { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: 4px; }
 

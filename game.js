@@ -139,20 +139,27 @@ async function play() {
   currentSource = source;
   $("play").textContent = "■";
 
-  const startedAt = audioCtx.currentTime;
-  const tick = () => {
-    const pos = from + Math.min(audioCtx.currentTime - startedAt, length);
-    if (!dragging) showPosition(pos);
+  // The audio clock only moves in small jumps, so the animation follows the screen's
+  // frame clock instead (minus the speaker delay, so it lines up with what you hear).
+  const startedAt = performance.now();
+  const latency = audioCtx.outputLatency || audioCtx.baseLatency || 0;
+  const tick = (now = performance.now()) => {
+    const elapsed = Math.max(0, (now - startedAt) / 1000 - latency);
+    if (!dragging) showPosition(from + Math.min(elapsed, length), false);
     if (currentSource === source) playheadFrame = requestAnimationFrame(tick);
   };
   tick();
 }
 
-// Moves the slider, the green fill and the time label to a position (seconds).
-function showPosition(pos) {
-  $("seek").value = pos;
-  $("playhead").style.width = `${pos / maxLen() * 100}%`;
-  $("pos-label").textContent = `${pos.toFixed(1)}s`;
+let shownLabel = "";
+
+// Moves the green fill, the handle and the time label to a position (seconds).
+// `moveSlider` is false during playback: the invisible slider only needs updating when it stops.
+function showPosition(pos, moveSlider = true) {
+  $("scrubber").style.setProperty("--pos", Math.min(1, pos / maxLen()));
+  if (moveSlider) $("seek").value = pos;
+  const label = `${pos.toFixed(1)}s`;
+  if (label !== shownLabel) $("pos-label").textContent = shownLabel = label;
 }
 
 // The slider can only go as far as the part of the clip that's been unlocked.
@@ -422,8 +429,7 @@ function render() {
   $("play").disabled = $("seek").disabled = loading;
   if (loading) {
     $("unlocked").style.width = "0";
-    $("playhead").style.width = "0";
-    $("pos-label").textContent = "0.0s";
+    showPosition(0);
     $("clip-len").textContent = "Loading…";
     $("input-area").hidden = true;
     $("result").hidden = true;
