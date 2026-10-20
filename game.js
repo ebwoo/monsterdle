@@ -308,10 +308,10 @@ function shareText() {
   const header = playType === "daily"
     ? `${config.title} ${label} #${game.puzzleNumber}`
     : `${config.title} ${label} (Endless)`;
-  // Wrong guesses are wrapped in || || so Discord hides them as spoilers until clicked.
-  // The correct guess is left out entirely, so the answer is never in the copied text.
-  const guessText = { skip: () => "Skipped", right: () => "Got it!", wrong: (g) => `||${g.name}||` };
-  const guessLines = game.guesses.map((g, i) => `${i + 1}. ${icons[g.type]} ${guessText[g.type](g)}`);
+  // Only wrong guesses get a name, wrapped in || || so Discord hides it as a spoiler.
+  // Skips and the correct guess just show their square, so the answer is never copied.
+  const guessLines = game.guesses.map((g, i) =>
+    `${i + 1}. ${icons[g.type]}${g.type === "wrong" ? ` ||${g.name}||` : ""}`);
   // Blank lines between sections keep it readable when pasted into chats.
   return [
     header,
