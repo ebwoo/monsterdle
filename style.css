@@ -8,15 +8,20 @@
 }
 
 :root {
-  --bg: #121214;
-  --panel: #1d1d22;
-  --border: #33333b;
-  --text: #ececf1;
-  --muted: #9a9aa6;
-  --accent: #b6f23a;
-  --wrong: #e5484d;
-  --skip: #55555f;
-  --right: #46a758;
+  --bg: #070707;
+  --panel: #050505;
+  --border: #9c9ca4;
+  --text: #f2f2f2;
+  --muted: #c4c4cc;
+  --accent: #ff3340;
+  --wrong: #ff2a35;
+  --skip: #6a6a72;
+  --right: #4fdc4f;
+  --frame: #e8e8e8;           /* the white borders around guess rows and cards */
+  --easy: #58d858;
+  --easy-dim: #245f24;
+  --hard: #ff2f38;
+  --hard-dim: #6e0b10;
 }
 
 * { box-sizing: border-box; }
@@ -348,3 +353,180 @@ button:disabled { opacity: .5; cursor: default; }
 .run-side { text-align: right; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .run-list li.run-ended { border-color: var(--wrong); background: color-mix(in srgb, var(--wrong) 10%, var(--bg)); }
 .run-ended .run-num { color: var(--wrong); }
+
+
+/* ===================================================================
+   Theme: damask wallpaper under a spotlight, framed mode tabs,
+   black guess rows, red controls.
+   =================================================================== */
+
+body {
+  min-height: 100vh;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+  /* top to bottom: spotlight glow, dark edges, wallpaper */
+  background:
+    radial-gradient(ellipse 44% 75% at 50% 0%, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(ellipse 66% 100% at 50% 10%, rgba(0, 0, 0, 0) 28%, rgba(0, 0, 0, .55) 52%, rgba(0, 0, 0, .9) 72%, #050505 100%),
+    url("/images/damask.svg") center top / 92px 129px repeat,
+    #6c6c6c;
+  background-attachment: fixed;
+}
+
+main { max-width: 440px; }
+main.wide { max-width: 780px; }
+
+/* ---------- header: logo, links, mode tabs ---------- */
+
+header {
+  position: relative;
+  border-bottom: 0;
+  padding: 26px 16px 4px;
+  justify-items: center;
+}
+.header-top { width: 100%; flex-direction: column; align-items: center; gap: 8px; }
+.header-controls { flex-direction: column; justify-content: center; gap: 10px; }
+
+.logo { margin: 0; font-size: 1rem; letter-spacing: 0; display: flex; flex-direction: column; align-items: center; }
+.logo a { text-decoration: none; display: flex; flex-direction: column; align-items: center; }
+.logo::before, .logo a::before {
+  content: "";
+  width: 120px; height: 90px;
+  margin-bottom: -26px;
+  background: url("/images/emblem.svg") center / contain no-repeat;
+}
+.logo a::before { display: block; }
+.logo:has(a)::before { display: none; }
+.logo span {
+  position: relative;
+  padding: 4px 16px 2px;
+  font-size: 1.55rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #9e1018;
+  background: linear-gradient(#2a3754, #121a2c);
+  border: 2px solid #3f66ad;
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(80, 140, 255, .55), inset 0 0 10px rgba(0, 0, 0, .85);
+  text-shadow: 0 1px 0 rgba(255, 90, 90, .35), 0 -1px 0 #000;
+}
+
+.site-nav a { color: #dedee4; }
+.site-nav a:hover, .site-nav a.active { color: #fff; background: rgba(0, 0, 0, .7); }
+
+@media (min-width: 1000px) {
+  /* Wide screens: logo top left, links top right, tabs centred at the top like the mockup. */
+  header { min-height: 120px; }
+  .header-top { position: absolute; top: 14px; left: 24px; right: 24px; width: auto; flex-direction: row; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+  .header-top > * { pointer-events: auto; }
+  .logo::before, .logo a::before { width: 170px; height: 128px; margin-bottom: -36px; }
+  .logo span { font-size: 2rem; }
+  .header-controls { margin-top: 10px; }
+}
+
+/* Framed mode tabs: Easy in green, Hard in red, others in white. */
+.tabs button {
+  --c: var(--frame); --c-dim: #555;
+  background: radial-gradient(ellipse at center, #141414, #000 80%);
+  color: var(--c);
+  border: 2px solid var(--c);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 3px #000, inset 0 0 0 5px var(--c-dim), 0 2px 8px rgba(0, 0, 0, .7);
+  opacity: .55;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tabs button[data-mode="easy"] { --c: var(--easy); --c-dim: var(--easy-dim); }
+.tabs button[data-mode="hard"] { --c: var(--hard); --c-dim: var(--hard-dim); }
+.tabs button:hover { opacity: .8; }
+.tabs button.active { opacity: 1; border-color: var(--c); color: var(--c); text-shadow: 0 0 8px var(--c), 0 1px 2px #000; }
+#mode-tabs { gap: 6px; }
+header #mode-tabs button { min-width: 150px; padding: 8px 22px; font-size: 1.6rem; }
+
+/* Daily / Endless switch: small black buttons with a white frame. */
+.toggle button {
+  background: #000;
+  color: #bdbdc4;
+  border: 1px solid #77777f;
+  border-radius: 2px;
+  padding: 4px 14px;
+}
+.toggle button.active { color: #fff; border-color: var(--frame); box-shadow: 0 0 6px rgba(255, 255, 255, .25); }
+
+/* ---------- the game ---------- */
+
+.muted { color: #dcdce2; text-shadow: 0 0 6px #000, 0 1px 2px #000; }
+
+.guesses li {
+  background: #000;
+  border: 2px solid var(--frame);
+  border-radius: 2px;
+  justify-content: center;
+  font-size: 1.15rem;
+  min-height: 44px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .65);
+}
+.guesses li::before, .guesses li.wrong::before, .guesses li.right::before, .guesses li.skip::before { content: none; }
+.guesses li.wrong { border-color: var(--wrong); color: var(--wrong); }
+.guesses li.right { border-color: var(--right); color: var(--right); background: #000; }
+.guesses li.skip { border-color: var(--skip); color: #9a9aa2; }
+
+.timeline { background: #000; border: 1px solid #cfcfd4; border-radius: 2px; height: 10px; }
+.timeline .unlocked { background: #5c0a10; }
+.timeline .playhead { background: var(--accent); }
+.timeline .tick { background: #2a2a2e; }
+.handle { background: #fff; border-color: var(--accent); }
+.timeline-labels { color: #dcdce2; }
+
+/* The glossy red play button. */
+.play {
+  width: 76px; height: 76px;
+  border: 0;
+  color: #ff2f3b;
+  font-size: 1.7rem;
+  background: radial-gradient(circle at 36% 30%, #ef4a51 0%, #b3141c 34%, #5c070c 74%, #2a0205 100%);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, .75), inset 0 -5px 10px rgba(0, 0, 0, .5), inset 0 3px 6px rgba(255, 140, 140, .25);
+  /* a pale rim so the red triangle stands out from the red ball */
+  text-shadow: 0 0 1px #ffe2e4, 0 0 2px #ffd0d4, 0 0 8px #ff1020;
+}
+
+.search input {
+  background: #000;
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  color: #ff5a63;
+  font-size: 1.25rem;
+  padding: 10px 14px;
+}
+.search input::placeholder { color: #e3303b; opacity: 1; }
+.search input:focus { outline: 0; box-shadow: 0 0 0 2px rgba(255, 50, 60, .35), 0 0 14px rgba(255, 40, 50, .35); }
+.suggestions { background: #000; border: 2px solid var(--accent); border-radius: 2px; }
+.suggestions li.active, .suggestions li:hover { background: #33060a; }
+
+/* Red buttons (Guess, Skip, Copy result, Log in…). */
+button {
+  background: linear-gradient(#db333c, #8c0e14 58%, #4c0508);
+  color: #ffc4c8;
+  border: 1px solid #2a0204;
+  border-radius: 2px;
+  font-weight: normal;
+  font-size: 1.12rem;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .6);
+}
+button:hover:not(:disabled) { filter: brightness(1.12); }
+#skip { background: linear-gradient(#db333c, #8c0e14 58%, #4c0508); color: #ffc4c8; border: 1px solid #2a0204; }
+button.secondary { background: #000; color: var(--text); border: 2px solid var(--frame); }
+.play:hover, .tabs button:hover, .toggle button:hover { filter: none; }
+.link-button { background: none; border: 0; box-shadow: none; color: var(--accent); font-size: .9rem; }
+
+/* ---------- leaderboard, profile, login ---------- */
+
+.card, .stat, .facts li, .run-list li {
+  background: rgba(0, 0, 0, .88);
+  border: 2px solid #c9c9cf;
+  border-radius: 2px;
+}
+.run-list li { background: #000; border-width: 1px; border-color: #55555c; }
+.run-list li.run-ended { border-color: var(--wrong); background: #1c0204; }
+.form input, .search-input { background: #000; border: 1px solid #8a8a92; border-radius: 2px; }
+.page-title, .section-title { text-shadow: 0 0 8px #000, 0 1px 2px #000; }
+.chip { background: #111; }

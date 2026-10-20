@@ -521,7 +521,7 @@ async function init() {
   const tabs = Object.entries(config.modes)
     .map(([key, m]) => {
       const b = document.createElement("button");
-      b.textContent = m.label;
+      b.textContent = m.label.replace(/\s*mode$/i, "");   // "Easy Mode" -> "Easy" on the tab
       b.dataset.mode = key;
       b.addEventListener("click", () => {
         mode = key;
